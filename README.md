@@ -113,6 +113,5 @@ WebWorker-Platform/
 ├── start_platform.py                        # Launcher integrado da plataforma
 ├── requirements.txt                         # Dependências Python
 ├── HABILIDADES.md                           # Catálogo de habilidades e arquitetura do agente
-├── PLANO_ARQUITETURA_V1.1_MODS_PIPELINE.md  # Especificação técnica do pipeline de Mods (v1.1)
 └── LICENSE                                  # Licença MIT
 ```

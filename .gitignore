@@ -32,6 +32,7 @@ data/*.db
 .temp
 .cache
 results/
+PLANO_ARQUITETURA_V1.1_MODS_PIPELINE.md
 
 # OS
 .DS_Store
