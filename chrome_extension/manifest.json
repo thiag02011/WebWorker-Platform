@@ -1,0 +1,31 @@
+{
+  "manifest_version": 3,
+  "name": "WebWorker AI - Agente Local & Fila Prioritária",
+  "version": "2.1.0",
+  "description": "Extensão Chrome com HUD em tempo real na aba, Service Worker em segundo plano e Kill Switch integrado.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage",
+    "tabs"
+  ],
+  "host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "http://localhost:8000/*",
+    "<all_urls>"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "WebWorker AI"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

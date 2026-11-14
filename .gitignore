@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.venv
+venv/
+ENV/
+.env
+
+# Go binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+go_services/webworker_gateway.exe
+
+# Personal configs & credentials
+config.json
+go_services/config.json
+*.local.json
+.config/
+*.config
+*.db
+*.sqlite
+*.sqlite3
+data/*.db
+
+# Logs & temp
+*.log
+.tmp
+.temp
+.cache
+results/
+
+# OS
+.DS_Store
+Thumbs.db

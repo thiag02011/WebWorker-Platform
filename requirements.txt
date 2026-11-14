@@ -1,0 +1,6 @@
+# Runtime dependencies
+playwright>=1.40.0
+psycopg2-binary>=2.9.9
+
+# Testing / property-based fuzzing
+hypothesis>=6.100.0

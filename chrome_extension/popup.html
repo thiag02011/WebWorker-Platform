@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <title>WebWorker AI - Controle Multiagente</title>
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #1e293b;
+      --border: #334155;
+      --text: #f8fafc;
+      --muted: #94a3b8;
+      --accent: #38bdf8;
+      --primary: #2563eb;
+      --danger: #dc2626;
+      --success: #10b981;
+    }
+    body {
+      width: 370px;
+      margin: 0;
+      padding: 14px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      font-size: 13px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .header h2 {
+      margin: 0;
+      font-size: 15px;
+      color: var(--accent);
+    }
+    .badge {
+      background: #0284c7;
+      color: #fff;
+      padding: 2px 7px;
+      border-radius: 99px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    textarea {
+      width: 100%;
+      box-sizing: border-box;
+      height: 85px;
+      background: var(--card);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 8px;
+      resize: vertical;
+      font-family: inherit;
+      font-size: 13px;
+    }
+    textarea:focus {
+      outline: 1px solid var(--accent);
+    }
+    .counter-bar {
+      display: flex;
+      justify-content: space-between;
+      font-size: 11.5px;
+      color: var(--muted);
+      margin-top: 4px;
+      margin-bottom: 10px;
+      background: rgba(255,255,255,0.03);
+      padding: 4px 8px;
+      border-radius: 4px;
+    }
+    .counter-bar span strong {
+      color: var(--accent);
+    }
+    .options-box {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 10px;
+    }
+    .checkbox-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      margin-bottom: 8px;
+      cursor: pointer;
+    }
+    .checkbox-row:last-child {
+      margin-bottom: 0;
+    }
+    .priority-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 8px;
+      padding-top: 8px;
+      border-top: 1px solid var(--border);
+    }
+    select {
+      background: var(--bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 4px 6px;
+      font-size: 12px;
+    }
+    .btn {
+      width: 100%;
+      border: none;
+      border-radius: 6px;
+      padding: 9px 12px;
+      font-weight: 600;
+      font-size: 13px;
+      cursor: pointer;
+      margin-bottom: 8px;
+      transition: opacity 0.15s;
+    }
+    .btn:hover {
+      opacity: 0.92;
+    }
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+    }
+    .status-box {
+      font-size: 12px;
+      padding: 8px;
+      border-radius: 6px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      color: #a7f3d0;
+      display: none;
+      word-break: break-word;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h2>WebWorker AI</h2>
+    <span class="badge" id="prioBadge">Prioridade 1 (Local)</span>
+  </div>
+
+  <label for="promptInput" style="display:block; margin-bottom:4px; color:var(--muted);">
+    Objetivo ou Comando para o Agente:
+  </label>
+  <textarea id="promptInput" placeholder="Ex: Encontre o ultimo episodio lancado nesta pagina ou resuma os dados visiveis..."></textarea>
+
+  <!-- Contador de Palavras e Estimativa de Tokens em Tempo Real -->
+  <div class="counter-bar">
+    <span>Palavras: <strong id="wordCount">0</strong></span>
+    <span>Tokens est.: <strong id="tokenEstimate">~0</strong></span>
+    <span>Chars: <strong id="charCount">0</strong></span>
+  </div>
+
+  <div class="options-box">
+    <label class="checkbox-row">
+      <input type="checkbox" id="localInteractiveChk" checked />
+      <div>
+        <strong>Interatividade Local (Prioridade 1)</strong>
+        <div style="font-size:11px; color:var(--muted);">
+          Executa direto na sua aba ativa exibindo a faixa fixa no topo.
+        </div>
+      </div>
+    </label>
+
+    <label class="checkbox-row">
+      <input type="checkbox" id="saveDataChk" />
+      <div>
+        <strong>Permitir salvar dados no WebWorker_db</strong>
+        <div style="font-size:11px; color:var(--muted);">
+          Desmarcado por padrao (Modo Privado: anonimiza sua URL e nao grava conteudo extraido).
+        </div>
+      </div>
+    </label>
+
+    <div class="priority-row" id="bgPriorityRow" style="display:none;">
+      <span>Prioridade na Fila Rede:</span>
+      <select id="bgPrioritySelect">
+        <option value="2">P2 - Urgente</option>
+        <option value="3" selected>P3 - Padrao (Default)</option>
+        <option value="4">P4 - Lote / Crawler (Sem Cloud)</option>
+        <option value="5">P5 - Monitor MD5 Recorrente</option>
+      </select>
+    </div>
+  </div>
+
+  <button class="btn btn-primary" id="sendTaskBtn">Enviar para Execucao</button>
+
+  <div class="status-box" id="statusBox"></div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

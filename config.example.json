@@ -1,0 +1,58 @@
+{
+  "version": "1.1",
+  "browser": {
+    "default_base_url": "https://www.google.com",
+    "headless": true,
+    "enable_adblock": true,
+    "timeout_ms": 20000,
+    "user_agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "cdp_endpoint": "http://127.0.0.1:9222",
+    "user_data_dir": ""
+  },
+  "servers": {
+    "gateway_port": 8000,
+    "dashboard_port": 8085
+  },
+  "fleet": {
+    "num_workers": 3,
+    "workers_available": 1,
+    "max_turns": 12,
+    "max_find_per_page": 1
+  },
+  "llm_backends": {
+    "local_gpu": {
+      "id": "local_gpu",
+      "type": "ollama_local",
+      "endpoint": "http://127.0.0.1:11434",
+      "model": "qwen2.5:3b",
+      "device": "GPU Local / Hardware",
+      "max_concurrent": 2
+    },
+    "lan_node": {
+      "id": "lan_node_gpu2",
+      "type": "ollama_lan",
+      "endpoint": "http://<LAN_HOST_IP>:11434",
+      "model": "qwen2.5:3b",
+      "device": "LAN Secondary Node",
+      "max_concurrent": 2
+    },
+    "cloud_fallback": {
+      "id": "cloud_gemini_fallback",
+      "type": "cloud_gemini",
+      "endpoint": "https://generativelanguage.googleapis.com",
+      "model": "gemini-2.5-flash",
+      "api_key": "SUA_GEMINI_API_KEY_AQUI",
+      "max_allowed_priority": 3,
+      "max_concurrent": 5
+    }
+  },
+  "database": {
+    "engine": "postgres",
+    "host": "127.0.0.1",
+    "port": 5432,
+    "dbname": "WebWorker_db",
+    "user": "postgres",
+    "password": "sua_senha_aqui",
+    "sqlite_path": "data/webworker.db"
+  }
+}
