@@ -15,6 +15,7 @@ FLUXO DA ARQUITETURA:
    -> 5. Captura Perceptiva: Gera screenshots PNG e snapshots limpos via DOMSimplifier.
 =============================================================================
 """
+import hashlib
 import time
 import re
 import urllib.parse
@@ -220,7 +221,42 @@ class BrowserEngine:
                     """)
                 except Exception:
                     pass
-            html = self._page.content()
+            html = ""
+            try:
+                html = self._page.evaluate("""
+                    () => {
+                        const root = document.documentElement;
+                        if (!root) return "";
+                        const clone = root.cloneNode(true);
+                        const keepTags = new Set(['HTML', 'HEAD', 'TITLE', 'BODY', 'OPTION', 'OPTGROUP']);
+                        const prune = (liveEl, cloneEl) => {
+                            if (!liveEl || !cloneEl) return;
+                            const lc = liveEl.children;
+                            const cc = cloneEl.children;
+                            for (let i = lc.length - 1; i >= 0; i--) {
+                                const le = lc[i];
+                                const ce = cc[i];
+                                if (!le || !ce) continue;
+                                const tag = le.tagName;
+                                if (!keepTags.has(tag)) {
+                                    const st = window.getComputedStyle(le);
+                                    const hiddenAttr = le.hidden || le.getAttribute('aria-hidden') === 'true';
+                                    if (hiddenAttr || st.display === 'none' || st.visibility === 'hidden') {
+                                        ce.remove();
+                                        continue;
+                                    }
+                                }
+                                prune(le, ce);
+                            }
+                        };
+                        prune(root, clone);
+                        return clone.outerHTML || "";
+                    }
+                """) or ""
+            except Exception:
+                html = ""
+            if not html:
+                html = self._page.content()
         except Exception:
             html = "<html><body></body></html>"
         snapshot = self.simplifier.simplify(html)
@@ -241,10 +277,34 @@ class BrowserEngine:
 
         try:
             resp = self._page.goto(target_url, timeout=timeout_ms, wait_until="domcontentloaded")
-            time.sleep(0.2)  # Tempo de espera para renderização e estabilização de DOM
+            time.sleep(0.3)
             status = resp.status if resp else 200
-            title = self._page.title()
             snapshot = self._get_current_snapshot()
+
+            def _clean_len(snap: DOMSnapshot) -> int:
+                raw = snap.pruned_text or ""
+                clean = re.sub(r"\[(?:link|button|input:[^\]]+|select|checkbox|radio)\s+@[^\]]+\]", " ", raw)
+                return len(" ".join(clean.split()))
+
+            def _has_spinner() -> bool:
+                try:
+                    return self._page.locator(
+                        "#loading:visible, .loading:visible, .spinner:visible, [aria-busy='true']:visible"
+                    ).count() > 0
+                except Exception:
+                    return False
+
+            if _clean_len(snapshot) < 200 or _has_spinner():
+                prev_md5 = hashlib.md5((snapshot.pruned_text or "").encode("utf-8", errors="ignore")).hexdigest()
+                for _ in range(3):
+                    time.sleep(5.0)
+                    snapshot = self._get_current_snapshot()
+                    curr_md5 = hashlib.md5((snapshot.pruned_text or "").encode("utf-8", errors="ignore")).hexdigest()
+                    if curr_md5 != prev_md5:
+                        prev_md5 = curr_md5
+                        if _clean_len(snapshot) >= 200 and not _has_spinner():
+                            break
+            title = self._page.title()
             return {
                 "success": True,
                 "url": self._page.url,
@@ -292,10 +352,31 @@ class BrowserEngine:
                     "resolved_selector": real_sel
                 }
 
+            before_text = (self._get_current_snapshot().pruned_text or "").strip()
             loc = vis_loc.first if vis_loc.count() > 0 else self._page.locator(real_sel).first
             loc.click(timeout=timeout_ms)
-            time.sleep(0.3)
+            time.sleep(0.4)
             snapshot = self._get_current_snapshot()
+            prev_after_text = (snapshot.pruned_text or "").strip()
+            waited = 0.4
+            stable_reads = 0
+            while waited < 6.0:
+                has_spinner = False
+                try:
+                    has_spinner = self._page.locator("#loading:visible, .loading:visible, .spinner:visible, [aria-busy='true']:visible").count() > 0
+                except Exception:
+                    pass
+                time.sleep(0.5)
+                waited += 0.5
+                snapshot = self._get_current_snapshot()
+                after_text = (snapshot.pruned_text or "").strip()
+                if after_text != prev_after_text:
+                    prev_after_text = after_text
+                    stable_reads = 0
+                    continue
+                stable_reads += 1
+                if not has_spinner and ((after_text != before_text and stable_reads >= 1) or waited >= 1.5):
+                    break
             return {
                 "success": True,
                 "action": "click",
@@ -349,20 +430,52 @@ class BrowserEngine:
             except Exception:
                 pass
 
+            should_enter = press_enter or (selector in ("@s", "@ms", "#s", "#ms") or "search" in real_sel.lower())
+            before_text = ""
+            if should_enter:
+                try:
+                    before_text = (self._get_current_snapshot().pruned_text or "").strip()
+                except Exception:
+                    before_text = ""
+
             if el_type in ("checkbox", "radio") or "checkbox" in real_sel.lower():
                 check_it = value in (True, "true", "True", "1", 1, "yes", "sim", "", None)
                 try:
                     loc.set_checked(check_it, timeout=timeout_ms)
                 except Exception:
                     loc.click(timeout=timeout_ms)
+                should_enter = False
             else:
                 loc.fill(value, timeout=timeout_ms)
-                should_enter = press_enter or (selector in ("@s", "@ms", "#s", "#ms") or "search" in real_sel.lower())
-                if should_enter or press_enter:
+                if should_enter:
                     loc.press("Enter")
 
-            time.sleep(0.5 if (press_enter or should_enter) else 0.2)
-            snapshot = self._get_current_snapshot()
+            if should_enter:
+                time.sleep(0.4)
+                snapshot = self._get_current_snapshot()
+                prev_after = (snapshot.pruned_text or "").strip()
+                waited = 0.4
+                stable_reads = 0
+                while waited < 4.5:
+                    has_spinner = False
+                    try:
+                        has_spinner = self._page.locator("#loading:visible, .loading:visible, .spinner:visible, [aria-busy='true']:visible").count() > 0
+                    except Exception:
+                        pass
+                    time.sleep(0.4)
+                    waited += 0.4
+                    snapshot = self._get_current_snapshot()
+                    after_text = (snapshot.pruned_text or "").strip()
+                    if after_text != prev_after:
+                        prev_after = after_text
+                        stable_reads = 0
+                        continue
+                    stable_reads += 1
+                    if not has_spinner and ((after_text != before_text and stable_reads >= 1) or waited >= 1.6):
+                        break
+            else:
+                time.sleep(0.2)
+                snapshot = self._get_current_snapshot()
             return {
                 "success": True,
                 "action": "fill",
@@ -553,13 +666,31 @@ class BrowserEngine:
         try:
             delta_y = amount_px if direction == "down" else -amount_px
             self._page.mouse.wheel(0, delta_y)
-            time.sleep(0.3)
+            if direction == "down":
+                try:
+                    self._page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                except Exception:
+                    pass
+            time.sleep(0.7)
             snapshot = self._get_current_snapshot()
+            repeated_blocks: Dict[str, int] = {}
+            try:
+                repeated_blocks = self._page.evaluate("""() => {
+                    const out = {};
+                    for (const sel of ['div.quote', '.quote', 'article', '.product', '.thumbnail']) {
+                        const n = document.querySelectorAll(sel).length;
+                        if (n > 0) out[sel] = n;
+                    }
+                    return out;
+                }""") or {}
+            except Exception:
+                pass
             return {
                 "success": True,
                 "action": "scroll",
                 "direction": direction,
                 "amount_px": amount_px,
+                "repeated_blocks": repeated_blocks,
                 "dom_snapshot": snapshot
             }
         except Exception as e:
@@ -579,6 +710,145 @@ class BrowserEngine:
             return self._page.locator(real_sel).count()
         except Exception:
             return 0
+
+    def count_items(self, auto_scroll: bool = True, max_wait_s: float = 8.0) -> Dict[str, Any]:
+        """Rola ate estabilizar o DOM (ate max_wait_s), restaura a posicao e agrupa elementos repetidos."""
+        try:
+            prev_y = 0
+            try:
+                prev_y = int(self._page.evaluate("() => Math.round(window.scrollY || window.pageYOffset || 0)") or 0)
+            except Exception:
+                prev_y = 0
+
+            waited = 0.0
+            if auto_scroll:
+                try:
+                    prev_state = self._page.evaluate(
+                        "() => [document.body ? document.body.scrollHeight : 0, document.querySelectorAll('*').length]"
+                    )
+                except Exception:
+                    prev_state = [0, 0]
+                stable_checks = 0
+                step_s = 0.35
+                while waited < max_wait_s:
+                    try:
+                        self._page.mouse.wheel(0, 1800)
+                        self._page.evaluate("() => window.scrollTo(0, document.body.scrollHeight)")
+                    except Exception:
+                        pass
+                    time.sleep(step_s)
+                    waited = round(waited + step_s, 2)
+                    try:
+                        cur_state = self._page.evaluate(
+                            "() => [document.body ? document.body.scrollHeight : 0, document.querySelectorAll('*').length]"
+                        )
+                    except Exception:
+                        cur_state = prev_state
+                    has_spinner = False
+                    try:
+                        has_spinner = (
+                            self._page.locator(
+                                "#loading:visible, .loading:visible, .spinner:visible, [aria-busy='true']:visible"
+                            ).count()
+                            > 0
+                        )
+                    except Exception:
+                        pass
+                    if cur_state != prev_state:
+                        prev_state = cur_state
+                        stable_checks = 0
+                    else:
+                        stable_checks += 1
+                        if stable_checks >= 3 and not has_spinner:
+                            break
+                try:
+                    self._page.evaluate(f"() => window.scrollTo(0, {prev_y})")
+                except Exception:
+                    pass
+
+            snapshot = self._get_current_snapshot()
+            groups = []
+            try:
+                groups = (
+                    self._page.evaluate(
+                        """() => {
+                        const ignoreTags = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'SVG', 'PATH', 'HEAD', 'META', 'LINK', 'BR', 'HR', 'NAV', 'HEADER', 'FOOTER', 'OPTION']);
+                        const bySig = new Map();
+                        const els = document.body ? document.body.querySelectorAll('*') : [];
+                        for (const el of els) {
+                            if (ignoreTags.has(el.tagName)) continue;
+                            if (el.closest('nav, header, footer, script, style')) continue;
+                            const tag = el.tagName.toLowerCase();
+                            const clsList = Array.from(el.classList || []).filter(c => c && !/^(col-|row|container|clearfix|pull-|text-|d-|mt-|mb-|p-|m-)/.test(c));
+                            let sig = '';
+                            if (clsList.length > 0) {
+                                sig = `${tag}.${clsList[0]}`;
+                            } else if (['article', 'tr', 'li', 'dd', 'section'].includes(tag)) {
+                                const p = el.parentElement;
+                                const pTag = p ? p.tagName.toLowerCase() : 'body';
+                                sig = `${pTag} > ${tag}`;
+                            } else {
+                                continue;
+                            }
+                            if (!bySig.has(sig)) bySig.set(sig, []);
+                            bySig.get(sig).push(el);
+                        }
+                        const rawGroups = [];
+                        for (const [sig, list] of bySig.entries()) {
+                            if (list.length < 3) continue;
+                            const texts = list.map(e => (e.innerText || e.textContent || '').replace(/\\s+/g, ' ').trim()).filter(Boolean);
+                            if (texts.length < 3) continue;
+                            const avgLen = texts.reduce((a, b) => a + b.length, 0) / texts.length;
+                            if (avgLen < 4) continue;
+                            rawGroups.push({
+                                selector: sig,
+                                count: list.length,
+                                avgLen: avgLen,
+                                sample: texts[0].slice(0, 100),
+                                firstEl: list[0]
+                            });
+                        }
+                        const filtered = rawGroups.filter(g => {
+                            return !rawGroups.some(other =>
+                                other !== g &&
+                                other.count === g.count &&
+                                other.firstEl.contains(g.firstEl)
+                            );
+                        });
+                        filtered.sort((a, b) => {
+                            const aSub = a.avgLen >= 20 ? 1 : 0;
+                            const bSub = b.avgLen >= 20 ? 1 : 0;
+                            if (aSub !== bSub) return bSub - aSub;
+                            return b.count - a.count;
+                        });
+                        return filtered.slice(0, 5).map((g, idx) => ({
+                            rank: idx + 1,
+                            selector: g.selector,
+                            count: g.count,
+                            sample: g.sample
+                        }));
+                    }"""
+                    )
+                    or []
+                )
+            except Exception:
+                groups = []
+
+            return {
+                "success": True,
+                "action": "count_items",
+                "auto_scroll": auto_scroll,
+                "waited_seconds": waited,
+                "restored_scroll_y": prev_y,
+                "groups": groups,
+                "dom_snapshot": snapshot,
+            }
+        except Exception as e:
+            return {
+                "success": False,
+                "error": str(e),
+                "groups": [],
+            }
 
     def is_checked(self, selector: str) -> bool:
         """Retorna se o elemento (checkbox/radio) está marcado."""

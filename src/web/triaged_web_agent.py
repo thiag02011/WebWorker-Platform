@@ -65,8 +65,19 @@ _GOAL_NOISE_WORDS = _STOPWORDS | {
     "quero", "saber", "preciso", "apenas", "formato", "desse", "deste", "este", "esse",
     "tabela", "secao", "coluna", "valor", "numero", "tell", "provide",
     "give", "find", "number", "format", "this", "in", "on", "for", "from", "to",
+    "json", "array", "primeiras", "primeiros", "primeira", "primeiro", "clique", "clicando",
+    "navegue", "faca", "preenchendo", "ordene", "aplique", "abra", "carregar", "exibida",
+    "exibido", "tela", "botao", "depois", "aguarde",
 }
 _BATCH_GOAL_RE = re.compile(r"\b(lote|batch|todos os links|all links|lista de links|listar links)\b", re.I)
+_FORM_GOAL_RE = re.compile(
+    r"\b(login|logar|preencha|preencher|fill|usuario|username|password|senha|submet|submit)\b",
+    re.I,
+)
+_COUNT_GOAL_RE = re.compile(
+    r"\b(contagem|conte|contar|quantos|quantas|count|browser_count_items|total de blocos|total de citacoes|total de itens|numero de blocos|numero de citacoes)\b",
+    re.I,
+)
 
 
 # =============================================================================
@@ -150,6 +161,20 @@ class PageView:
         self.offset = self.anchor_offset(self.text, self.url)
         self.text_inputs = self._parse_text_inputs()
         self.elements = self._parse_elements()
+
+    def update_snapshot(self, snapshot: Optional[DOMSnapshot], url: str = "") -> None:
+        if not snapshot:
+            return
+        self.snapshot = snapshot
+        if url:
+            self.url = url
+        self.raw_text = self.snapshot.full_text or self.snapshot.pruned_text or ""
+        self.text = _strip_links(self.raw_text)
+        self.selector_map = dict(self.snapshot.selector_map or {})
+        self.collapsed_sections = dict(getattr(self.snapshot, "collapsed_sections", None) or {})
+        self.text_inputs = self._parse_text_inputs()
+        self.elements = self._parse_elements()
+        self.offset = min(self.offset, max(0, len(self.text) - 1))
 
     # ---------------------------------------------------------------- ancora
     @staticmethod
@@ -377,7 +402,11 @@ class TriagedWebAgent:
 
     # ---------------------------------------------------------- observacao
     def _build_observation(self, view: PageView, goal: str, last_result: str,
-                           history: List[str], turn: int, final_turn: bool) -> str:
+                           history: List[str], turn: int, final_turn: bool,
+                           turn_tools: Optional[List[Dict[str, Any]]] = None,
+                           filled_ids: Optional[set] = None,
+                           did_submit: bool = False,
+                           did_count: bool = False) -> str:
         parts = [
             f"OBJETIVO: {goal}",
             f"TURNO: {turn}/{self.max_turns}",
@@ -388,15 +417,31 @@ class TriagedWebAgent:
         if last_result:
             parts.append("RESULTADO DA ULTIMA ACAO:\n" + last_result)
 
+        filled_set = filled_ids or set()
+        is_form_goal = bool(view.text_inputs and _FORM_GOAL_RE.search(_fold(goal or "")))
+        is_count_goal = bool(_COUNT_GOAL_RE.search(_fold(goal or "")))
+        unfilled_ids = [i["id"] for i in view.text_inputs if i["id"] not in filled_set]
+
         if view.text_inputs:
-            lines = [f"- {i['id']} ({i['type']}) {i['desc']}".rstrip() for i in view.text_inputs[:10]]
+            lines = []
+            for i in view.text_inputs[:10]:
+                status_tag = ""
+                if is_form_goal:
+                    status_tag = " [PREENCHIDO]" if i["id"] in filled_set else " [PENDENTE]"
+                lines.append(f"- {i['id']} ({i['type']}) {i['desc']}{status_tag}".rstrip())
             parts.append("CAMPOS DE TEXTO:\n" + "\n".join(lines))
         else:
             parts.append("CAMPOS DE TEXTO: nenhum nesta pagina (browser_fill indisponivel).")
 
         elements = view.relevant_elements(goal)
         if elements:
-            lines = [f"- {e['id']} [{e['kind']}] {e['label'] or e['target']}" for e in elements]
+            lines = []
+            for e in elements:
+                lbl, tgt = e["label"], e["target"]
+                if lbl and tgt and tgt not in ("#", "/", lbl):
+                    lines.append(f"- {e['id']} [{e['kind']}] {lbl} ({tgt})")
+                else:
+                    lines.append(f"- {e['id']} [{e['kind']}] {lbl or tgt}")
             parts.append(f"ELEMENTOS INTERATIVOS (mais relevantes de {len(view.elements)}):\n" + "\n".join(lines))
 
         parts.append("TEXTO DA PAGINA:\n" + view.window())
@@ -405,10 +450,23 @@ class TriagedWebAgent:
                 "ULTIMO TURNO: responda com browser_extract_data usando o que ja foi encontrado, "
                 "ou chame browser_report_failure."
             )
+        elif is_form_goal and unfilled_ids:
+            parts.append(
+                f"INSTRUCAO FINAL: Preencha agora o campo pendente {unfilled_ids[0]} usando browser_fill."
+            )
+        elif is_form_goal and not did_submit:
+            parts.append(
+                "INSTRUCAO FINAL: Todos os campos foram preenchidos. Clique agora no botao de envio/Login "
+                "usando browser_click para confirmar a mudanca de pagina."
+            )
+        elif is_count_goal and not did_count:
+            parts.append(
+                "INSTRUCAO FINAL: Chame browser_count_items agora para rolar a pagina ate o fim e obter a contagem exata dos grupos no DOM."
+            )
         else:
             parts.append(
                 "INSTRUCAO FINAL: Se o dado solicitado ja estiver visivel no TEXTO DA PAGINA ou no "
-                "RESULTADO DA ULTIMA ACAO, finalize AGORA chamando browser_extract_data com answer preenchido."
+                "RESULTADO DA ULTIMA ACAO, finalize AGORA chamando browser_extract_data com 'answer' preenchido."
             )
         return "\n\n".join(parts)
 
@@ -437,6 +495,12 @@ class TriagedWebAgent:
         return None
 
     def _click_selector(self, sid: str, view: PageView, from_extract: bool = False) -> Dict[str, Any]:
+        if sid in getattr(view, "collapsed_sections", {}):
+            raw_list = _strip_links(view.collapsed_sections[sid])
+            return {
+                "ok": True,
+                "message": f"Lista de linguagens disponiveis em {sid}:\n{raw_list[:2500]}",
+            }
         target_offset = self._element_text_offset(sid, view)
         res = self.engine.click(sid)
         if not res.get("success"):
@@ -444,7 +508,7 @@ class TriagedWebAgent:
                 view.offset = target_offset
                 return {
                     "ok": True,
-                    "message": f"Janela posicionada na secao de {sid} (posicao {view.offset}). Extraia o dado real do TEXTO DA PAGINA.",
+                    "message": f"Janela posicionada na secao de {sid}. Extraia o dado real do TEXTO DA PAGINA.",
                 }
             return {"ok": False, "message": f"Falha ao clicar em {sid}: {res.get('error')}"}
         msg = (
@@ -462,13 +526,42 @@ class TriagedWebAgent:
         last_result: str = "",
         goal: str = "",
         find_count_this_page: int = 0,
+        unfilled_inputs: Optional[List[str]] = None,
+        did_submit_this_page: bool = True,
+        did_count_this_page: bool = True,
     ) -> Dict[str, Any]:
         """Valida o aterramento e executa a ferramenta. Retorna dict com ok/message/final/changed_page."""
         if name == "browser_extract_data":
+            if view.text_inputs and _FORM_GOAL_RE.search(_fold(goal)):
+                if unfilled_inputs:
+                    next_id = unfilled_inputs[0]
+                    return {
+                        "ok": False,
+                        "message": (
+                            f"ERRO: Falta preencher o campo de texto {next_id}. "
+                            f"Use browser_fill em {next_id} antes de clicar no botao de envio ou extrair."
+                        ),
+                    }
+                if not did_submit_this_page:
+                    return {
+                        "ok": False,
+                        "message": (
+                            "ERRO: Todos os campos foram preenchidos, mas a pagina ainda nao mudou. "
+                            "Use browser_click no botao de envio/Login para confirmar a mudanca de pagina antes de extrair."
+                        ),
+                    }
+            if _COUNT_GOAL_RE.search(_fold(goal)) and not did_count_this_page:
+                return {
+                    "ok": False,
+                    "message": (
+                        "ERRO: Para objetivos de contagem, chame browser_count_items primeiro para rolar a pagina "
+                        "e contar os blocos repetidos no DOM."
+                    ),
+                }
             answer = str(args.get("answer") or "").strip()
-            if not answer:
+            if not answer or answer in ("[]", "{}"):
                 # Pre-triagem deterministica: se tentou extrair vazio no Turno 1 sem buscar em pagina longa, executa a busca
-                if find_count_this_page == 0 and len(view.text) > WINDOW_CHARS and self.max_find_per_page > 0:
+                if not answer and find_count_this_page == 0 and len(view.text) > WINDOW_CHARS and self.max_find_per_page > 0:
                     auto_q = _triage_goal_query(goal, view.title, view.url)
                     if auto_q:
                         res_find = self._execute("browser_find_in_page", {"query": auto_q}, view, last_result, goal, find_count_this_page)
@@ -486,9 +579,14 @@ class TriagedWebAgent:
             nums = re.findall(r"(?<!\w)-?\d+(?:\.\d+)?(?!\w)", answer)
             if nums:
                 visible_dom = re.sub(r"@\w+", "", _strip_links(f"{view.window()}\n{last_result}"))
+                visible_dom_compact = re.sub(r"(?<=\d)[.,](?=\d{3}\b)", "", visible_dom)
+                combined_dom = f"{visible_dom}\n{visible_dom_compact}"
                 missing = [
                     n for n in nums
-                    if not re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", visible_dom)
+                    if not (
+                        re.search(r"(?<!\w)" + re.escape(n) + r"(?!\w)", combined_dom)
+                        or ("." in n and re.search(r"(?<!\w)" + re.escape(n.replace(".", ",")) + r"(?!\w)", combined_dom))
+                    )
                 ]
                 if missing:
                     return {
@@ -521,9 +619,60 @@ class TriagedWebAgent:
 
         if name == "browser_read_more":
             direction = str(args.get("direction") or "down")
+            m_scroll = re.search(r"\b(\d+)\s*(?:rolagen|scroll)", goal or "", re.I) if direction != "up" else None
+            if m_scroll:
+                n_scrolls = min(max(1, int(m_scroll.group(1))), 6)
+                scroll_res: Dict[str, Any] = {}
+                for _ in range(n_scrolls):
+                    scroll_res = self.engine.scroll("down", 1200)
+                if scroll_res.get("dom_snapshot"):
+                    view.update_snapshot(scroll_res.get("dom_snapshot"), self.engine.get_url())
+                rep = scroll_res.get("repeated_blocks") or {}
+                rep_str = ", ".join(f"{k}: {v}" for k, v in rep.items()) if rep else "nenhum"
+                return {
+                    "ok": True,
+                    "changed_page": True,
+                    "message": f"Rolagem na pagina executada. Total agora: {len(view.text)} chars; blocos repetidos ({rep_str}).",
+                }
             if view.read_more(direction):
-                return {"ok": True, "message": f"Janela de leitura movida para {'baixo' if direction != 'up' else 'cima'} (posicao {view.offset})."}
+                return {"ok": True, "message": f"Janela de leitura movida para {'baixo' if direction != 'up' else 'cima'}."}
+            if direction != "up":
+                prev_len = len(view.text)
+                scroll_res = self.engine.scroll("down", 1000)
+                if scroll_res.get("dom_snapshot"):
+                    view.update_snapshot(scroll_res.get("dom_snapshot"), self.engine.get_url())
+                if len(view.text) > prev_len:
+                    view.read_more("down")
+                    return {"ok": True, "changed_page": True, "message": "Pagina rolada e novos dados carregados."}
             return {"ok": False, "message": "Ja esta no limite do texto; nao ha mais conteudo nessa direcao."}
+
+        if name == "browser_count_items":
+            auto_scroll = bool(args.get("auto_scroll", True))
+            prev_offset = view.offset
+            res = self.engine.count_items(auto_scroll=auto_scroll)
+            if not res.get("success"):
+                return {"ok": False, "message": f"Falha ao contar itens: {res.get('error')}"}
+            if res.get("dom_snapshot"):
+                view.update_snapshot(res.get("dom_snapshot"), self.engine.get_url())
+                view.offset = min(prev_offset, max(0, len(view.text) - WINDOW_CHARS))
+            groups = res.get("groups") or []
+            if not groups:
+                return {
+                    "ok": True,
+                    "message": "Contagem concluida, mas nenhum grupo de itens repetidos (>=3) foi detectado no DOM.",
+                }
+            lines = [
+                f"- Grupo {g['rank']}: {g['count']} itens ({g['selector']}) | Exemplo: \"{g['sample']}\""
+                for g in groups
+            ]
+            return {
+                "ok": True,
+                "message": (
+                    "Contagem concluida apos carregar a pagina ate o fim (posicao restaurada):\n"
+                    + "\n".join(lines)
+                    + "\n-> Chame browser_extract_data com o numero do grupo correspondente ao objetivo."
+                ),
+            }
 
         if name == "browser_click":
             sid = self._ground_selector(str(args.get("selector") or ""), view)
@@ -591,7 +740,8 @@ class TriagedWebAgent:
               f"{len(view.elements)} elementos | {len(view.text_inputs)} campos de texto", flush=True)
 
         include_batch = bool(_BATCH_GOAL_RE.search(user_goal or ""))
-        tools_all = get_react_tools(include_batch=include_batch)
+        include_count = bool(_COUNT_GOAL_RE.search(_fold(user_goal or "")))
+        tools_all = get_react_tools(include_batch=include_batch, include_count=include_count)
         tools_no_find = [t for t in tools_all if t["function"]["name"] != "browser_find_in_page"]
         tools_final = [get_answer_tool(), get_failure_tool()]
         history: List[str] = []
@@ -599,21 +749,45 @@ class TriagedWebAgent:
         last_action_key = None
         seen_find_queries: set = set()
         find_count_this_page = 0
+        filled_ids_this_page: set = set()
+        did_submit_this_page = False
+        did_count_this_page = False
         consecutive_errors = 0
 
         for turn in range(1, self.max_turns + 1):
             final_turn = (turn == self.max_turns)
-            observation = self._build_observation(view, user_goal, last_result, history, turn, final_turn)
+            unfilled = [i["id"] for i in view.text_inputs if i["id"] not in filled_ids_this_page]
+            is_form_goal = bool(view.text_inputs and _FORM_GOAL_RE.search(_fold(user_goal or "")))
+            if final_turn:
+                turn_tools = tools_final
+            elif is_form_goal and unfilled:
+                turn_tools = [t for t in tools_all if t["function"]["name"] in ("browser_fill", "browser_report_failure")]
+            elif is_form_goal and not did_submit_this_page:
+                turn_tools = [t for t in tools_all if t["function"]["name"] in ("browser_click", "browser_report_failure")]
+            elif include_count and not did_count_this_page:
+                turn_tools = [t for t in tools_all if t["function"]["name"] in ("browser_count_items", "browser_report_failure")]
+            else:
+                base_tools = tools_no_find if find_count_this_page >= self.max_find_per_page else tools_all
+                if include_count and did_count_this_page:
+                    turn_tools = [t for t in base_tools if t["function"]["name"] != "browser_count_items"]
+                else:
+                    turn_tools = base_tools
+            observation = self._build_observation(
+                view,
+                user_goal,
+                last_result,
+                history,
+                turn,
+                final_turn,
+                turn_tools,
+                filled_ids=filled_ids_this_page,
+                did_submit=did_submit_this_page,
+                did_count=did_count_this_page,
+            )
             messages = [
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": observation},
             ]
-            if final_turn:
-                turn_tools = tools_final
-            elif find_count_this_page >= self.max_find_per_page:
-                turn_tools = tools_no_find
-            else:
-                turn_tools = tools_all
             decision = self._call_llm(messages, turn_tools)
             if not decision:
                 consecutive_errors += 1
@@ -628,13 +802,32 @@ class TriagedWebAgent:
             print(f"[Turno {turn}] {name} {args}", flush=True)
 
             action_key = (name, json.dumps(args, sort_keys=True, ensure_ascii=False))
+            if (
+                name == "browser_read_more"
+                and str(args.get("direction") or "down").lower() == "down"
+                and (view.offset + len(view.window()) < len(view.text))
+            ):
+                action_key = (name, "down", view.offset)
             q_norm = _fold(str(args.get("query") or "")).strip() if name == "browser_find_in_page" else ""
             if action_key == last_action_key and name != "browser_report_failure":
                 result = {"ok": False, "message": "Acao identica a anterior rejeitada. Escolha uma acao diferente."}
             elif name == "browser_find_in_page" and q_norm and q_norm in seen_find_queries:
                 result = {"ok": False, "message": f"Busca repetida rejeitada: '{args.get('query')}' ja foi buscado nesta pagina. Extraia o dado com browser_extract_data ou busque outro termo."}
             else:
-                result = self._execute(name, args, view, last_result, user_goal, find_count_this_page)
+                result = self._execute(
+                    name, args, view, last_result, user_goal, find_count_this_page,
+                    unfilled_inputs=unfilled,
+                    did_submit_this_page=did_submit_this_page,
+                    did_count_this_page=did_count_this_page,
+                )
+                if name == "browser_fill" and result.get("ok"):
+                    sel_filled = self._ground_selector(str(args.get("selector") or ""), view) or str(args.get("selector") or "").strip()
+                    if sel_filled:
+                        filled_ids_this_page.add(sel_filled)
+                elif name == "browser_click" and result.get("ok"):
+                    did_submit_this_page = True
+                elif name == "browser_count_items" and result.get("ok"):
+                    did_count_this_page = True
                 if name == "browser_find_in_page" or result.get("auto_find"):
                     find_count_this_page += 1
                     if q_norm:
@@ -679,9 +872,15 @@ class TriagedWebAgent:
                 view = self._refresh_view(view)
                 if target_offset is not None and view.text == prev_text and view.offset == 0:
                     view.offset = target_offset
+                if len(view.text) != len(prev_text):
+                    last_action_key = None
                 view.title = ""
                 seen_find_queries.clear()
                 find_count_this_page = 0
+                if name not in ("browser_fill", "browser_click"):
+                    filled_ids_this_page.clear()
+                    did_submit_this_page = False
+                    did_count_this_page = False
 
             if consecutive_errors >= MAX_CONSECUTIVE_ERRORS:
                 telemetry["error"] = f"{MAX_CONSECUTIVE_ERRORS} erros consecutivos. Ultimo: {result['message']}"

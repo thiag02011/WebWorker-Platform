@@ -5,7 +5,7 @@ CAMINHO: tests/test_tdd_advanced_mock_matrix.py
 ===============================================================================
 OBJETIVO:
 Bateria de 20 casos de testes determinísticos, isolados por Mocks (sem dependência
-de Ollama online ou rede externa), validando a estabilidade da Versão Final 1.0b:
+de Ollama online ou rede externa), validando a estabilidade da Versão 1.2:
 - Telemetria de Hardware Universal (Ollama-First, AMD, CPU Host, Zero 8151 hardcoded)
 - Extratores Semânticos Resilientes (Stop-markers fracionados, disclaimers multi-linha)
 - Descoberta em Lote Dinâmica (Coleta total sem truncamento, seletores customizados)

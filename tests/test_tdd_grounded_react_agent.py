@@ -60,6 +60,12 @@ class _WikiEngine:
         return {"success": True}
     def go_back(self):
         return {"success": True}
+    def count_items(self, auto_scroll=True):
+        return {
+            "success": True,
+            "groups": [{"rank": 1, "selector": "div.quote", "count": 100, "sample": "The world as we have created it"}],
+            "dom_snapshot": DOMSimplifier().simplify(self.html),
+        }
 
 
 def _agent(max_turns=4, max_find_per_page=None):
@@ -229,6 +235,38 @@ class TestGroundedReactAgent(unittest.TestCase):
         self.assertTrue(res["success"])
         self.assertIn("-165", res["turns"][0]["result"]["message"])
         self.assertEqual(res["final_result"]["extracted_value"], "-165")
+
+    def test_g15_count_items_tool_flow(self):
+        agent = _agent(max_turns=4)
+        agent.ollama.queue_response("browser_count_items", {"auto_scroll": True})
+        agent.ollama.queue_response("browser_extract_data", {"answer": "100"})
+        res = agent.run_task(
+            "https://quotes.toscrape.com/scroll",
+            "Use browser_count_items e retorne a contagem de citacoes.",
+        )
+        self.assertTrue(res["success"])
+        self.assertEqual(res["final_result"]["extracted_value"], "100")
+
+    def test_g16_login_form_phase_progression(self):
+        login_html = (
+            "<html><body><form>"
+            "<input type='text' id='username' name='username'/>"
+            "<input type='password' id='password' name='password'/>"
+            "<input type='submit' value='Login'/>"
+            "</form><a href='/logout'>Logout</a></body></html>"
+        )
+        agent = _agent(max_turns=6)
+        agent.engine = _WikiEngine(html=login_html, url="https://quotes.toscrape.com/login")
+        agent.ollama.queue_response("browser_fill", {"selector": "@username", "value": "user1"})
+        agent.ollama.queue_response("browser_fill", {"selector": "@password", "value": "pass1"})
+        agent.ollama.queue_response("browser_click", {"selector": "@3"})
+        agent.ollama.queue_response("browser_extract_data", {"answer": "Logout"})
+        res = agent.run_task(
+            "https://quotes.toscrape.com/login",
+            "Preencha @username e @password, clique em Login e informe o texto Logout.",
+        )
+        self.assertTrue(res["success"])
+        self.assertEqual(res["final_result"]["extracted_value"], "Logout")
 
 
 if __name__ == "__main__":

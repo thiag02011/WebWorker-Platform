@@ -1,6 +1,6 @@
 """
 ===============================================================================
-MÓDULO: Frota Multiagente Distribuída & Ponte CDP Interativa (Dia 6)
+MÓDULO: Frota Multiagente Distribuída & Ponte CDP Interativa
 CAMINHO: src/multiagent/worker_fleet.py
 ===============================================================================
 

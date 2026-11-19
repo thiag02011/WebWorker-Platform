@@ -1,10 +1,10 @@
-# WebWorker Platform (v1.1) — Plataforma Distribuída Multiagente
+# WebWorker Platform (v1.2) — Plataforma Distribuída Multiagente
 
 Sistema de navegação web autônoma e execução distribuída de tarefas de IA, integrando:
 - **Microserviço Gateway & LLM Router em Go (`:8000`)** com fila de prioridades Min-Heap (`P1` a `P5`), thread-safety estrita (`sync.Mutex`), router de propósito geral (*Raw LLM*) e trava de custo Cloud (`<= P3`).
 - **Persistência Relacional no PostgreSQL (`WebWorker_db`)** com protocolo de *Crash Recovery* (pausa e retomada no reboot), fallback em memória para testes e *Anonimização de Privacidade* para sessões do navegador do usuário.
-- **Frota Concorrente de Workers Playwright com Poda Semântica de DOM** (`< 1.500` tokens), formatação tabular (`|`), filtro de notas de rodapé (`#cite_note`, `#cite_ref`) e adblock nativo em rede.
-- **Agente Web ReAct Aterrado com Pré-Triagem Determinística (`TriagedWebAgent`)**: Ciclo único Observar → Decidir → Agir com busca por palavras inteiras (`browser_find_in_page`), limite configurável de buscas por página (`max_find_per_page`), normalização determinística de queries (sem custo de tokens de LLM) e aterramento de números/seletores em `browser_extract_data`.
+- **Frota Concorrente de Workers Playwright com Poda Semântica de DOM** (`< 1.500` tokens), poda em tempo real de subárvores ocultas via CSS (`display:none`, `visibility:hidden`, `hidden`, `aria-hidden="true"`), compressão inteligente de listas longas e de idiomas (`@escolher_linguagem_N`, `@ver_<slug>_N`), formatação tabular (`|`), filtro de notas de rodapé (`#cite_note`, `#cite_ref`) e adblock nativo em rede.
+- **Agente Web ReAct Aterrado com Pré-Triagem Determinística (`TriagedWebAgent`)**: Ciclo único Observar → Decidir → Agir com busca por palavras inteiras e links (`browser_find_in_page`), contagem estrutural com auto-scroll (`browser_count_items`), trava de fases em formulários/login, limite configurável de buscas por página (`max_find_per_page`), normalização determinística de queries (sem custo de tokens de LLM) e aterramento de números/seletores em `browser_extract_data`.
 - **Telemetria Universal de Hardware (Ollama-First)**: Detecta alocação do modelo via Ollama (`/api/ps`), suporta NVIDIA (`nvidia-smi`), AMD Radeon (`rocm-smi`) e modo CPU Host nativo (RAM física real via kernel do SO).
 - **Extratores Semânticos Resilientes**: Captura de Google AI Overview com detecção de disclaimers e stop-markers fracionados imunes a quebras de tags ou linhas.
 - **Extensão Google Chrome (Manifest V3)** com contador de palavras e estimativa de tokens em tempo real, botão de pânico (*Kill Switch*), som *"pop"* via Web Audio API e toasts com *fade-out*.
@@ -82,7 +82,7 @@ python -m unittest tests/test_tdd_advanced_mock_matrix.py
 python -m unittest discover -s tests -p "test_tdd_*.py"
 
 # 5. Teste End-to-End Integrado (requer serviços ativos):
-python tests/test_day6_distributed_platform.py
+python tests/test_distributed_platform.py
 ```
 
 ### 7. Carregar a Extensão no Google Chrome
@@ -113,5 +113,7 @@ WebWorker-Platform/
 ├── start_platform.py                        # Launcher integrado da plataforma
 ├── requirements.txt                         # Dependências Python
 ├── HABILIDADES.md                           # Catálogo de habilidades e arquitetura do agente
+├── RELATORIO_SISTEMA_DISTRIBUIDO.md         # Relatório técnico da arquitetura distribuída
+├── RELATORIO_V1_2.md                        # Relatório técnico e benchmark do motor v1.2
 └── LICENSE                                  # Licença MIT
 ```

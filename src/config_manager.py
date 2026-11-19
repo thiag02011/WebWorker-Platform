@@ -36,7 +36,7 @@ from typing import Any, Dict, Optional
 logger = logging.getLogger("ConfigManager")
 
 DEFAULT_CONFIG: Dict[str, Any] = {
-    "version": "1.1",
+    "version": "1.2",
     "browser": {
         "default_base_url": "https://www.google.com",
         "headless": True,

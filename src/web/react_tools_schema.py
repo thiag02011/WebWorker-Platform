@@ -100,7 +100,21 @@ def get_failure_tool() -> Dict[str, Any]:
     )
 
 
-def get_react_tools(include_batch: bool = False) -> List[Dict[str, Any]]:
+def get_count_items_tool() -> Dict[str, Any]:
+    return _fn(
+        "browser_count_items",
+        "Rola a pagina automaticamente ate o fim (ate 5s para carregar itens de scroll infinito), restaura a posicao e conta os grupos de elementos repetidos no DOM.",
+        {
+            "auto_scroll": {
+                "type": "boolean",
+                "description": "Opcional: se True (padrao), rola ate o fim da pagina antes de contar os elementos.",
+            },
+        },
+        [],
+    )
+
+
+def get_react_tools(include_batch: bool = False, include_count: bool = False) -> List[Dict[str, Any]]:
     """Retorna o conjunto fixo de ferramentas do agente ReAct aterrado."""
     tools = [
         get_answer_tool(),
@@ -111,6 +125,8 @@ def get_react_tools(include_batch: bool = False) -> List[Dict[str, Any]]:
         get_go_back_tool(),
         get_failure_tool(),
     ]
+    if include_count:
+        tools.append(get_count_items_tool())
     if include_batch:
         from src.web.triaged_tools_schema import get_batch_discovery_tool
         tools.append(get_batch_discovery_tool())

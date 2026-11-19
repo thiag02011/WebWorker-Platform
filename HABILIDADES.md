@@ -1,7 +1,7 @@
 # Catalogo Completo de Habilidades e Arquitetura do WebWorker AI
 
 > **Guia Unificado de Habilidades, Ferramentas e Arquitetura do Agente Web**  
-> **Plataforma:** WebWorker AI Platform (Versao 1.1)  
+> **Plataforma:** WebWorker AI Platform (Versao 1.2)  
 > **Status:** Producao / Consolidado em Arquivo Unico
 
 ---
@@ -500,3 +500,7 @@ Com base nos experimentos empiricos em `qwen2.5:3b` (72 execucoes comparativas E
    - Ex: `"na Bedrock Edition"` vs `"na Java Edition"`, pois a Java Edition possui apenas `Identifier` textual (`scaffolding`) enquanto a Bedrock Edition possui a coluna `Numeric ID`.
 5. **Mantenha o prompt curto e imperativo (1 frase):**
    - Prompts enxutos (8 a 14 palavras) preservam a atencao do modelo 3B na janela de leitura e na `INSTRUCAO FINAL`.
+6. **Itere item a item em listas longas (1 a 2 campos por chamada, usando o anterior como ancora):**
+   - Pedir arrays JSON com 5–10 itens de uma vez leva o modelo `3b` a emitir `answer: ""` ou placeholders (`[repo1]`). Extrair 1 item por chamada e usar o resultado anterior como ancora para o proximo funciona de forma previsivel.
+7. **Use marcadores reais do DOM como ancora, nunca termos inventados:**
+   - Se a pagina numera itens como `'1.'`, `'2.'`, use `'1.'` / `'2.'` no objetivo — nunca termos ausentes do texto como `'rank 2'`, que fazem o agente buscar sem sucesso e rolar a pagina.

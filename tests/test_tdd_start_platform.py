@@ -48,9 +48,9 @@ class TestTDDStartPlatform(unittest.TestCase):
     # -------------------------------------------------------------------------
     def test_01_version_loaded_dynamically_from_config(self):
         """Valida que a versao do sistema exibida e obtida dinamicamente do config.json sem hardcode."""
-        with patch.object(self.mock_config, "get", return_value="1.1") as mock_get:
+        with patch.object(self.mock_config, "get", return_value="1.2") as mock_get:
             version = start_platform.get_platform_version()
-            self.assertEqual(version, "1.1")
+            self.assertEqual(version, "1.2")
             mock_get.assert_called_with("version")
 
         # Testa se mudanca na config reflete imediatamente no launcher

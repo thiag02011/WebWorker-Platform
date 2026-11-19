@@ -1,6 +1,6 @@
 """
 ===============================================================================
-MÓDULO: Dashboard Matriz Multiagente em Tempo Real (:8085) - Dia 6
+MÓDULO: Dashboard Matriz Multiagente em Tempo Real (:8085)
 CAMINHO: src/dashboard/multiagent_dashboard.py
 ===============================================================================
 
@@ -133,7 +133,7 @@ class MultiAgentDashboardServer:
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="refresh" content="5" />
-  <title>WebWorker_db Matrix Dashboard (:8085) - Dia 6</title>
+  <title>WebWorker_db Matrix Dashboard (:8085)</title>
   <style>
     body {{ background:#0b1120; color:#f8fafc; font-family:system-ui,sans-serif; margin:0; padding:24px; }}
     h1 {{ margin-top:0; color:#38bdf8; font-size:22px; }}
@@ -157,7 +157,7 @@ class MultiAgentDashboardServer:
 <body>
   <div class="top-bar">
     <div>
-      <h1>⚡ WebWorker Distributed Matrix (Dia 6) — Porta :8085</h1>
+      <h1>⚡ WebWorker Distributed Matrix — Porta :8085</h1>
       <div style="font-size:13px; color:#94a3b8;">
         Banco Oficial: <code>WebWorker_db</code> | Go Gateway (:8000): <strong>{'ONLINE' if snapshot['go_gateway'].get('online') else 'STANDBY'}</strong> |
         Teto Cloud Fallback: <strong>Prioridade &le; P{snapshot['cloud_fallback_max_priority']} (P4/P5 bloqueados na nuvem)</strong>

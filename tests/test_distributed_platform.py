@@ -1,12 +1,12 @@
 """
 ===============================================================================
-MÓDULO: Suíte de Testes End-to-End da Plataforma Distribuída (Dia 6)
-CAMINHO: tests/test_day6_distributed_platform.py
+MÓDULO: Suíte de Testes End-to-End da Plataforma Distribuída
+CAMINHO: tests/test_distributed_platform.py
 ===============================================================================
 
 OBJETIVO:
 Validar todos os Critérios de Aceite (AC-01 a AC-11) aprovados no plano de
-arquitetura do Dia 6:
+arquitetura distribuída:
 - T1 (Fila P1..P5 & Preempção): Enfileirar tarefas no Go Gateway (:8000) e no
   PostgreSQL (WebWorker_db), verificando que prioridade omitida assume P3 e que
   P1 fura a fila imediatamente.
@@ -31,7 +31,7 @@ arquitetura do Dia 6:
 
 FLUXO DA ARQUITETURA:
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│ [test_day6_distributed_platform.py]                                         │
+│ [test_distributed_platform.py]                                              │
 │    ├──> Inicia Binário Nativo Go (go_services/webworker_gateway.exe :8000)  │
 │    ├──> Conecta ao PostgreSQL 18 (WebWorker_db)                             │
 │    ├──> Instancia MultiAgentWorkerFleet + MultiAgentDashboardServer (:8085) │
@@ -78,9 +78,9 @@ def http_json(url: str, method: str = "GET", payload: dict = None) -> tuple[int,
             return e.code, {"raw_error": body}
 
 
-async def run_all_day6_tests() -> dict:
+async def run_all_distributed_tests() -> dict:
     print("=" * 80)
-    print("INICIANDO SUÍTE DE VALIDAÇÃO END-TO-END — DIA 6 (ARQUITETURA DISTRIBUÍDA)")
+    print("INICIANDO SUÍTE DE VALIDAÇÃO END-TO-END (ARQUITETURA DISTRIBUÍDA)")
     print("=" * 80)
 
     db = WebWorkerDBManager(auto_init=True)
@@ -460,15 +460,15 @@ async def run_all_day6_tests() -> dict:
 
     results_dir = ROOT_DIR / "results"
     results_dir.mkdir(exist_ok=True)
-    out_file = results_dir / "day6_distributed_validation.json"
+    out_file = results_dir / "distributed_validation.json"
     out_file.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
 
     print("\n" + "=" * 80)
-    print(f"RESULTADO FINAL DA SUÍTE DO DIA 6: {'100% APROVADO' if all_passed else 'FALHA DETECTADA'}")
+    print(f"RESULTADO FINAL DA SUÍTE DISTRIBUÍDA: {'100% APROVADO' if all_passed else 'FALHA DETECTADA'}")
     print(f"Relatório JSON salvo em: {out_file}")
     print("=" * 80)
     return report
 
 
 if __name__ == "__main__":
-    asyncio.run(run_all_day6_tests())
+    asyncio.run(run_all_distributed_tests())

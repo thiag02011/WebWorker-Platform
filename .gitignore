@@ -31,8 +31,12 @@ data/*.db
 .tmp
 .temp
 .cache
+.hypothesis/
+.pytest_cache/
+scratch/
 results/
-PLANO_ARQUITETURA_V1.1_MODS_PIPELINE.md
+scripts/
+src/dashboard/webworker_command_center_v1_1.html
 
 # OS
 .DS_Store

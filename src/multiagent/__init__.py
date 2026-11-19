@@ -1,1 +1,1 @@
-"""Pacote Multiagente Distribuído (Dia 6)."""
+"""Pacote Multiagente Distribuído."""
